@@ -18,18 +18,18 @@ export async function POST(req: Request) {
     }
 
     const todayEvents = memos
-      .filter((m: any) => m.category === "今日あったこと")
-      .map((m: any) => `- ${m.content}`)
+      .filter((m: { category: string; content: string }) => m.category === "今日あったこと")
+      .map((m: { content: string }) => `- ${m.content}`)
       .join("\n");
 
     const todayInsights = memos
-      .filter((m: any) => m.category === "今日の気づき")
-      .map((m: any) => `- ${m.content}`)
+      .filter((m: { category: string; content: string }) => m.category === "今日の気づき")
+      .map((m: { content: string }) => `- ${m.content}`)
       .join("\n");
 
     const tomorrowSteps = memos
-      .filter((m: any) => m.category === "明日の一歩")
-      .map((m: any) => `- ${m.content}`)
+      .filter((m: { category: string; content: string }) => m.category === "明日の一歩")
+      .map((m: { content: string }) => `- ${m.content}`)
       .join("\n");
 
     const prompt = `
