@@ -60,9 +60,7 @@ ${tomorrowSteps || "未入力"}
     });
 
     const dailyAiComment =
-      response.output_text ||
-      response.output?.[0]?.content?.[0]?.text ||
-      "日次AIコメントを取得できませんでした。";
+      response.output_text || "日次AIコメントを取得できませんでした。";
 
     const savedAt = new Date().toLocaleString("ja-JP", {
       year: "numeric",
