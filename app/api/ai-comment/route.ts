@@ -37,9 +37,7 @@ ${tomorrowStep || "未入力"}
     });
 
     const aiComment =
-      response.output_text ||
-      response.output?.[0]?.content?.[0]?.text ||
-      "AIコメントを取得できませんでした。";
+      response.output_text || "AIコメントを取得できませんでした。";
 
     const gasUrl = process.env.GAS_WEB_APP_URL;
 
@@ -50,6 +48,7 @@ ${tomorrowStep || "未入力"}
           "Content-Type": "text/plain;charset=utf-8",
         },
         body: JSON.stringify({
+          type: "memo",
           savedAt,
           dateKey,
           todayEvent,
@@ -60,8 +59,8 @@ ${tomorrowStep || "未入力"}
       });
 
       const gasText = await gasRes.text();
-      console.log("GAS status:", gasRes.status);
-      console.log("GAS response:", gasText);
+      console.log("ai-comment GAS status:", gasRes.status);
+      console.log("ai-comment GAS response:", gasText);
 
       if (!gasRes.ok) {
         throw new Error(`GAS連携失敗: ${gasRes.status} ${gasText}`);
