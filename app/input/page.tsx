@@ -2,21 +2,36 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+type Category =
+  | "今日あったこと"
+  | "今日の気づき"
+  | "改善できそうなこと"
+  | "その他";
+
 type MemoItem = {
   id: string;
   savedAt: string;
   dateKey: string;
-  category: string;
+  category: Category;
   content: string;
   syncStatus: "unsent" | "sent";
 };
 
-const STORAGE_KEY = "reflection_memo_queue";
+type DailySummaryResult = {
+  title: string;
+  comment: string;
+  todayEventsSummary: string;
+  insightsSummary: string;
+  improvementsSummary: string;
+  othersSummary: string;
+};
 
-const categories = [
+const STORAGE_KEY = "reflection_memo_queue_v2";
+
+const categories: Category[] = [
   "今日あったこと",
   "今日の気づき",
-  "明日の一歩",
+  "改善できそうなこと",
   "その他",
 ];
 
@@ -42,13 +57,14 @@ function formatDateLabel(dateKey: string) {
 export default function InputPage() {
   const todayKey = formatDateKey(new Date());
 
-  const [category, setCategory] = useState("今日あったこと");
+  const [category, setCategory] = useState<Category>("今日あったこと");
   const [content, setContent] = useState("");
   const [memoList, setMemoList] = useState<MemoItem[]>([]);
   const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
   const [message, setMessage] = useState("");
   const [isSyncing, setIsSyncing] = useState(false);
   const [isReviewing, setIsReviewing] = useState(false);
+  const [dailyTitle, setDailyTitle] = useState("");
   const [dailyComment, setDailyComment] = useState("");
 
   useEffect(() => {
@@ -80,6 +96,15 @@ export default function InputPage() {
     return uniqueDates.sort((a, b) => (a < b ? 1 : -1));
   }, [memoList]);
 
+  const categoryCounts = useMemo(() => {
+    return {
+      "今日あったこと": filteredList.filter((m) => m.category === "今日あったこと").length,
+      "今日の気づき": filteredList.filter((m) => m.category === "今日の気づき").length,
+      "改善できそうなこと": filteredList.filter((m) => m.category === "改善できそうなこと").length,
+      "その他": filteredList.filter((m) => m.category === "その他").length,
+    };
+  }, [filteredList]);
+
   const handleAddMemo = () => {
     setMessage("");
 
@@ -96,7 +121,7 @@ export default function InputPage() {
       dateKey: formatDateKey(now),
       category,
       content: content.trim(),
-      syncStatus: "unsent",
+      syncStatus: "unsent" as const,
     };
 
     const newList = [newItem, ...memoList];
@@ -121,31 +146,27 @@ export default function InputPage() {
     setIsSyncing(true);
 
     try {
-      const updatedList = [...memoList];
+      const res = await fetch("/api/sync-memo", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          memos: unsentItems,
+        }),
+      });
 
-      for (const item of unsentItems) {
-        const res = await fetch("/api/sync-memo", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(item),
-        });
+      const data = await res.json();
 
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data?.message || "同期に失敗しました。");
-        }
-
-        const targetIndex = updatedList.findIndex((memo) => memo.id === item.id);
-        if (targetIndex >= 0) {
-          updatedList[targetIndex] = {
-            ...updatedList[targetIndex],
-            syncStatus: "sent",
-          };
-        }
+      if (!res.ok) {
+        throw new Error(data?.message || "同期に失敗しました。");
       }
+
+      const updatedList: MemoItem[] = memoList.map((item) =>
+        item.syncStatus === "unsent"
+          ? { ...item, syncStatus: "sent" as const }
+          : item
+      );
 
       setMemoList(updatedList);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedList));
@@ -160,6 +181,7 @@ export default function InputPage() {
 
   const handleDailyReview = async () => {
     setMessage("");
+    setDailyTitle("");
     setDailyComment("");
 
     if (filteredList.length === 0) {
@@ -181,17 +203,19 @@ export default function InputPage() {
         }),
       });
 
-      const data = await res.json();
+      const data: DailySummaryResult | { message?: string } = await res.json();
 
       if (!res.ok) {
-        throw new Error(data?.message || "日次AIコメントの生成に失敗しました。");
+        throw new Error((data as { message?: string })?.message || "日次振り返りに失敗しました。");
       }
 
-      setDailyComment(data.comment || "");
-      setMessage("日次AIコメントを作成して保存しました。");
+      const result = data as DailySummaryResult;
+      setDailyTitle(result.title);
+      setDailyComment(result.comment);
+      setMessage("日次サマリーを作成・更新しました。");
     } catch (error) {
       console.error(error);
-      setMessage("日次AIコメントの生成中にエラーが発生しました。");
+      setMessage("日次振り返り中にエラーが発生しました。");
     } finally {
       setIsReviewing(false);
     }
@@ -203,6 +227,7 @@ export default function InputPage() {
     setSelectedDateKey(todayKey);
     setContent("");
     setMessage("");
+    setDailyTitle("");
     setDailyComment("");
   };
 
@@ -242,7 +267,7 @@ export default function InputPage() {
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => setCategory(e.target.value as Category)}
               style={{
                 width: "100%",
                 padding: "14px 12px",
@@ -375,6 +400,25 @@ export default function InputPage() {
             </div>
           )}
 
+          {dailyTitle && (
+            <div
+              style={{
+                marginTop: "14px",
+                padding: "16px",
+                background: "#f8fafc",
+                border: "1px solid #cbd5e1",
+                borderRadius: "12px",
+              }}
+            >
+              <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "6px" }}>
+                生成されたタイトル
+              </div>
+              <div style={{ fontSize: "20px", fontWeight: "bold", lineHeight: 1.6 }}>
+                {dailyTitle}
+              </div>
+            </div>
+          )}
+
           {dailyComment && (
             <div
               style={{
@@ -387,7 +431,7 @@ export default function InputPage() {
               }}
             >
               <h3 style={{ marginTop: 0, marginBottom: "10px", fontSize: "20px" }}>
-                日次AIコメント
+                AIコメント
               </h3>
               <div style={{ whiteSpace: "pre-wrap" }}>{dailyComment}</div>
             </div>
@@ -421,7 +465,11 @@ export default function InputPage() {
                 return (
                   <button
                     key={dateKey}
-                    onClick={() => setSelectedDateKey(dateKey)}
+                    onClick={() => {
+                      setSelectedDateKey(dateKey);
+                      setDailyTitle("");
+                      setDailyComment("");
+                    }}
                     style={{
                       flex: "0 0 auto",
                       padding: "12px 16px",
@@ -449,9 +497,31 @@ export default function InputPage() {
             boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
           }}
         >
-          <h2 style={{ fontSize: "24px", marginBottom: "14px" }}>
+          <h2 style={{ fontSize: "24px", marginBottom: "10px" }}>
             {formatDateLabel(selectedDateKey)} のメモ
           </h2>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+              gap: "8px",
+              marginBottom: "14px",
+            }}
+          >
+            <div style={{ padding: "10px", background: "#f8fafc", borderRadius: "10px" }}>
+              今日あったこと: {categoryCounts["今日あったこと"]}件
+            </div>
+            <div style={{ padding: "10px", background: "#f8fafc", borderRadius: "10px" }}>
+              今日の気づき: {categoryCounts["今日の気づき"]}件
+            </div>
+            <div style={{ padding: "10px", background: "#f8fafc", borderRadius: "10px" }}>
+              改善できそうなこと: {categoryCounts["改善できそうなこと"]}件
+            </div>
+            <div style={{ padding: "10px", background: "#f8fafc", borderRadius: "10px" }}>
+              その他: {categoryCounts["その他"]}件
+            </div>
+          </div>
 
           {filteredList.length === 0 ? (
             <p>この日のメモはありません。</p>
